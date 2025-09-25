@@ -1,9 +1,10 @@
 import math, random, heapq, pygame
 from utils import clamp, px_to_grid, grid_to_px, line_of_sight
-from config import TILE, FLOOR, WALL, CRATE, BUSH, HIDE, TIGER_SPAWN, SPAWN
+from config import TILE, FLOOR, WALL, CRATE, BUSH, HIDE, TIGER_SPAWN, SPAWN, TREE, ROCK
 
 # ---------------- Grid helpers ----------------
-PASSABLE = {FLOOR, BUSH, HIDE, TIGER_SPAWN, SPAWN}
+PASSABLE = {FLOOR, HIDE, TIGER_SPAWN, SPAWN}
+
 
 def is_passable(grid, gx, gy):
     if gy < 0 or gy >= len(grid) or gx < 0 or gx >= len(grid[0]):
@@ -86,7 +87,7 @@ class Player:
         for oy in rng:
             for ox in rng:
                 tx,ty = gx+ox, gy+oy
-                if 0<=ty<len(grid) and 0<=tx<len(grid[0]) and grid[ty][tx] in (WALL, CRATE):
+                if 0 <= ty < len(grid) and 0 <= tx < len(grid[0]) and grid[ty][tx] in (WALL, CRATE, TREE, ROCK):
                     r = pygame.Rect(tx*TILE, ty*TILE, TILE, TILE)
                     if r.collidepoint(nx, self.pos.y):
                         if dx>0: nx = r.left - 0.1
@@ -106,10 +107,16 @@ class Player:
 
 # ---------------- Hunter (A* Patrol & Chase) ----------------
 class Hunter:
-    def __init__(self, x, y, outdoor=True):
+    def __init__(self, x, y, outdoor=True, frames=None):
         self.pos = pygame.Vector2(x,y)
         self.radius = 12
         self.outdoor = outdoor
+
+        self.frames = frames or []
+        self.anim_fps = 10
+        self.anim_t = 0.0
+        self.frame_i = 0
+        self.facing_left = False
 
         self.speed_patrol = 120 if outdoor else 110
         self.speed_chase  = 200 if outdoor else 180
@@ -203,6 +210,15 @@ class Hunter:
 
         # clamp & anti-stuck
         self._clamp_to_grid(grid)
+
+        moving = (self.pos - self._last_pos).length() > 0.1
+        if moving and self.frames:
+            self.anim_t += dt * self.anim_fps
+            self.frame_i = int(self.anim_t) % len(self.frames)
+        else:
+            self.anim_t = 0.0
+            self.frame_i = 0
+
         if (self.pos - self._last_pos).length() < 0.8:
             self._stuck_t += dt
         else:
@@ -360,6 +376,16 @@ class Hunter:
 
     def draw(self, surf, cam, colors, show_fov=False):
         p = cam.to_screen(self.pos)
-        pygame.draw.circle(surf, colors["hunter"], (int(p.x), int(p.y)), self.radius)
+
+        if self.frames:
+            img = self.frames[self.frame_i]
+            if self.facing_left:
+                img = pygame.transform.flip(img, True, False)
+            rect = img.get_rect(center=(int(p.x), int(p.y)))
+            surf.blit(img, rect)
+        else:
+            # Fallback (eski daire)
+            pygame.draw.circle(surf, colors["hunter"], (int(p.x), int(p.y)), self.radius)
+
         if show_fov:
             pygame.draw.circle(surf, colors["fov"], (int(p.x), int(p.y)), int(self.view_dist), 1)

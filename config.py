@@ -5,6 +5,9 @@ SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 TILE = 32
 VISION_TILES = 10
+HUNTER_SCALE = 1.25
+TREE_SCALE   = 1.20
+ROCK_SCALE   = 1.20
 
 # Fog visibility rings: (radius in tiles, darkness 0..1)
 FOG_RINGS = [
@@ -45,7 +48,9 @@ THEMES = {
         "tiger": (255, 165, 60),
         "footprint": (240, 210, 120),
         "fov": (255, 160, 160),
-        "hide": (90, 150, 200)
+        "hide": (90, 150, 200),
+        "tree": (70, 110, 70),  # açık yeşil
+        "rock": (50, 80, 60)
     },
     "Night Ops": {
         "bg": (6, 10, 18),
@@ -61,7 +66,9 @@ THEMES = {
         "tiger": (255, 180, 80),
         "footprint": (210, 200, 180),
         "fov": (255, 150, 200),
-        "hide": (120, 140, 220)
+        "hide": (120, 140, 220),
+        "tree": (70, 110, 70),  # açık yeşil
+        "rock": (50, 80, 60)
     },
     "Dry Savanna": {
         "bg": (28, 22, 10),
@@ -77,12 +84,14 @@ THEMES = {
         "tiger": (255, 170, 60),
         "footprint": (230, 210, 130),
         "fov": (255, 180, 160),
-        "hide": (160, 160, 90)
+        "hide": (160, 160, 90),
+        "tree": (70, 110, 70),  # açık yeşil
+        "rock": (50, 80, 60)
     }
 }
 
 # Tile IDs
-FLOOR=0; WALL=1; BUSH=2; DOOR=3; EXIT=4; CRATE=5; TIGER_SPAWN=6; SPAWN=7; HIDE=8
+FLOOR=0; WALL=1; BUSH=2; DOOR=3; EXIT=4; CRATE=5; TIGER_SPAWN=6; SPAWN=7; HIDE=8; TREE=9; ROCK=10
 
 # AI caps
 MAX_HUNTERS_OUT = 48

@@ -1,13 +1,16 @@
 import random, pygame
-from config import TILE, FLOOR, WALL, BUSH, DOOR, EXIT, TIGER_SPAWN, SPAWN, HIDE
+from config import TILE, FLOOR, WALL, BUSH, DOOR, EXIT, TIGER_SPAWN, SPAWN, HIDE, TREE, ROCK, CRATE
 from utils import grid_to_px
 
 class TileMap:
-    def __init__(self, w_tiles, h_tiles, theme, kind="overworld"):
+    def __init__(self, w_tiles, h_tiles, theme, kind="overworld", images=None):
         self.w_tiles = w_tiles
         self.h_tiles = h_tiles
         self.theme = theme
         self.kind = kind
+        self.images = images or {}
+        self.tree_img = self.images.get("tree")
+        self.rock_img = self.images.get("rock")
         self.grid = [[FLOOR for _ in range(w_tiles)] for __ in range(h_tiles)]
         self.doors = []           # overworld: entrances to warehouses
         self.exit_pos = None      # overworld exit
@@ -23,40 +26,68 @@ class TileMap:
 
     # ------------------ OVERWORLD ------------------
     def _gen_overworld(self):
+        # sınırlar duvar, içi zemin
         for y in range(self.h_tiles):
             for x in range(self.w_tiles):
-                if x in (0, self.w_tiles-1) or y in (0, self.h_tiles-1):
+                if x in (0, self.w_tiles - 1) or y in (0, self.h_tiles - 1):
                     self.grid[y][x] = WALL
                 else:
-                    r = random.random()
-                    if r < 0.05:   self.grid[y][x]=WALL
-                    elif r < 0.11: self.grid[y][x]=BUSH
-                    else:          self.grid[y][x]=FLOOR
-        # Doors (warehouses)
-        door_count = random.randint(2,3)
+                    # açık alan: önce tümü FLOOR
+                    self.grid[y][x] = FLOOR
+
+        # --- Doors (warehouses) ---
+        door_count = random.randint(2, 3)
+        self.doors = []
         placed = 0
         while placed < door_count:
-            x = random.randint(3, self.w_tiles-4)
-            y = random.randint(3, self.h_tiles-4)
+            x = random.randint(3, self.w_tiles - 4)
+            y = random.randint(3, self.h_tiles - 4)
             if self.grid[y][x] == FLOOR:
                 self.grid[y][x] = DOOR
-                self.doors.append((x,y))
+                self.doors.append((x, y))
                 placed += 1
-        # Exit
+
+        # --- Exit ---
         for _ in range(1000):
-            ex = random.randint(2, self.w_tiles-3)
-            ey = random.randint(2, self.h_tiles-3)
+            ex = random.randint(2, self.w_tiles - 3);
+            ey = random.randint(2, self.h_tiles - 3)
             if self.grid[ey][ex] == FLOOR:
-                self.grid[ey][ex]=EXIT
-                self.exit_pos = (ex,ey)
+                self.grid[ey][ex] = EXIT
+                self.exit_pos = (ex, ey)
                 break
-        # Spawns
+
+        # --- Spawns ---
+        self.spawn_points = []
         for _ in range(10):
-            sx = random.randint(2, self.w_tiles-3)
-            sy = random.randint(2, self.h_tiles-3)
+            sx = random.randint(2, self.w_tiles - 3);
+            sy = random.randint(2, self.h_tiles - 3)
             if self.grid[sy][sx] == FLOOR:
-                self.grid[sy][sx]=SPAWN
-                self.spawn_points.append((sx,sy))
+                self.grid[sy][sx] = SPAWN
+                self.spawn_points.append((sx, sy))
+
+        # --- Ağaç & Kaya yerleşimi (BUSH/CRATE yerine) ---
+        p_tree = 0.030  # %3 ağaç
+        p_rock = 0.025  # %2.5 kaya
+        for y in range(2, self.h_tiles - 2):
+            for x in range(2, self.w_tiles - 2):
+                t = self.grid[y][x]
+                # özel karoların üstüne ağaç/kaya koyma
+                if t in (WALL, DOOR, EXIT, SPAWN):
+                    continue
+                if t == FLOOR:
+                    r = random.random()
+                    if r < p_tree:
+                        self.grid[y][x] = TREE
+                    elif r < p_tree + p_rock:
+                        self.grid[y][x] = ROCK
+
+        # --- Emniyet: overworld’de BUSH/CRATE KALMASIN ---
+        for y in range(self.h_tiles):
+            for x in range(self.w_tiles):
+                if self.grid[y][x] == BUSH:
+                    self.grid[y][x] = TREE
+                elif self.grid[y][x] == CRATE:
+                    self.grid[y][x] = ROCK
 
     # ------------------ WAREHOUSE (exact 2-wide + HIDE) ------------------
     def _gen_warehouse_2wide_maze_with_hides(self):
@@ -207,3 +238,18 @@ class TileMap:
                 elif tid==HIDE:  pygame.draw.rect(surf, colors.get("hide", colors["floor"]), rr)
                 elif tid in (TIGER_SPAWN, SPAWN):
                     pygame.draw.rect(surf, colors["floor"], rr)
+                elif tid == TREE:
+                    if self.tree_img:
+                        img = self.tree_img
+                        rect = img.get_rect(center=rr.center)  # rr = tile rect
+                        surf.blit(img, rect.topleft)
+                    else:
+                        pygame.draw.rect(surf, self.theme.get("tree", (70, 110, 70)), rr)
+                elif tid == ROCK:
+                    if self.rock_img:
+                        img = self.rock_img
+                        rect = img.get_rect(center=rr.center)
+                        surf.blit(img, rect.topleft)
+                    else:
+                        pygame.draw.rect(surf, self.theme.get("rock", (50, 80, 60)), rr)
+

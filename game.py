@@ -51,13 +51,45 @@ class Game:
         self.scene_cooldown = 0.0      # seconds; blocks rapid enter/exit
         self.indoor_exit_tile = (1, 1) # indoor tile to exit from
         self.left_entry_tile = True    # require leaving entry tile before exit allowed
+        # Sprites (tree & rock)
+        self.tree_img = None
+        self.rock_img = None
+        try:
+            img = pygame.image.load("assets/images/tree.png").convert_alpha()
+            size = int(TILE * TREE_SCALE)
+            self.tree_img = pygame.transform.smoothscale(img, (size, size))
+        except Exception:
+            self.tree_img = None
+
+        # rock
+        try:
+            img = pygame.image.load("assets/images/rock.png").convert_alpha()
+            size = int(TILE * ROCK_SCALE)
+            self.rock_img = pygame.transform.smoothscale(img, (size, size))
+        except Exception:
+            self.rock_img = None
+
+
+        # --- Hunter running sprite (7 frames in one row) ---
+        self.hunter_frames = []
+
+        try:
+            sheet = pygame.image.load("assets/images/hunter_run.png").convert_alpha()
+            cols = 7
+            fw, fh = sheet.get_width() // cols, sheet.get_height()
+            tw, th = int(TILE * HUNTER_SCALE), int(TILE * HUNTER_SCALE)
+            for i in range(cols):
+                frame = sheet.subsurface(pygame.Rect(i * fw, 0, fw, fh))
+                self.hunter_frames.append(pygame.transform.smoothscale(frame, (tw, th)))
+        except Exception as e:
+            print("[WARN] hunter_run yüklenemedi:", e)
 
         self.audio.play_music("menu")
         self.reset_world()
 
     # ---------------- World/Scenes ----------------
     def reset_world(self):
-        self.overworld = TileMap(80, 60, self.colors, kind="overworld")
+        self.overworld = TileMap(80, 60, self.colors, kind="overworld", images={"tree": self.tree_img, "rock": self.rock_img})
         self.warehouses = [TileMap(41,31,self.colors,kind="warehouse") for _ in self.overworld.doors]
 
         self.player = Player(*grid_to_px(self.overworld.w_tiles//2, self.overworld.h_tiles//2))
@@ -73,7 +105,7 @@ class Game:
             if self.overworld.spawn_points:
                 gx,gy = random.choice(self.overworld.spawn_points)
                 x,y = grid_to_px(gx,gy)
-                self.hunters_out.append(Hunter(x,y,outdoor=True))
+                self.hunters_out.append(Hunter(x, y, outdoor=True, frames=self.hunter_frames))
 
         self.timer_total = 9*60
         self.timer = self.timer_total
@@ -136,7 +168,7 @@ class Game:
                         if wmap.spawn_points:
                             gx,gy = random.choice(wmap.spawn_points)
                             x,y = grid_to_px(gx,gy)
-                            self.hunters_in[i].append(Hunter(x,y,outdoor=False))
+                            self.hunters_in[i].append(Hunter(x, y, outdoor=False, frames=self.hunter_frames))
                 self.update_indoor_footprints()
                 # after entering, start cooldown and reset exit guard
                 self.scene_cooldown = 0.6
@@ -265,7 +297,7 @@ class Game:
                             self.state = State.PAUSE
                         elif e.key==pygame.K_e:
                             self.rescue_if_possible()
-                        elif e.key==pygame.K_h:
+                        elif e.key == pygame.K_SPACE:
                             # HIDE toggle only indoor while on HIDE tile
                             if self.in_indoor and self.indoor_idx is not None:
                                 wmap = self.warehouses[self.indoor_idx]
