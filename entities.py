@@ -1,19 +1,17 @@
 import math, random, pygame
 from utils import clamp, px_to_grid, grid_to_px, line_of_sight
-from config import TILE, FLOOR, WALL, CRATE, BUSH
+from config import TILE, FLOOR, WALL, CRATE, BUSH, HIDE
 
 class Player:
     def __init__(self, x, y, speed=210):
         self.pos = pygame.Vector2(x,y)
         self.radius = 12
         self.speed = speed
-        self.hiding = False   # YENİ: barınağa girip saklanma durumu
+        self.hiding = False  # H tuşu ile kullanıyorsan game.py yönetiyor
 
     def move(self, dt, grid):
         if self.hiding:
             return
-
-    def move(self, dt, grid):
         keys = pygame.key.get_pressed()
         v = pygame.Vector2(0,0)
         if keys[pygame.K_w]: v.y -= 1
@@ -52,6 +50,7 @@ class Player:
         p = cam.to_screen(self.pos)
         pygame.draw.circle(surf, color, (int(p.x), int(p.y)), self.radius)
 
+
 class Hunter:
     def __init__(self, x, y, outdoor=True):
         self.pos = pygame.Vector2(x,y)
@@ -66,80 +65,188 @@ class Hunter:
         self.view_dist = 9*TILE if outdoor else 7*TILE
         self.search_timer = 0.0
 
-        # perf: vision debounce & cos-threshold
+        # Görüş optimizasyonu
         self.cos_fov = math.cos(math.radians(self.fov_deg/2))
         self.vision_tick = 0.0
 
+        # Takılma önleme
+        self._last_pos = self.pos.copy()
+        self._stuck_time = 0.0      # ne kadar süredir yer değiştirmedi
+        self._repath_cool = 0.0
+
     def update(self, dt, grid, player, stealth_factor):
+        # Oyuncu HIDE üzerinde mi?
+        pgx, pgy = px_to_grid(player.pos.x, player.pos.y)
+        player_on_hide = (0 <= pgy < len(grid) and 0 <= pgx < len(grid[0]) and grid[pgy][pgx] == HIDE)
+
+        # --- Görüş (HIDE üzerindeyken kapalı) ---
         seen = False
-        # Debounced vision checks (every ~0.06s)
         self.vision_tick -= dt
         if self.vision_tick <= 0:
             self.vision_tick = 0.06
-            to_player = (player.pos - self.pos)
-            dist = to_player.length()
-            if dist < self.view_dist:
-                v = self.dir if self.dir.length_squared()>0 else pygame.Vector2(1,0)
-                v = v.normalize()
-                u = to_player.normalize() if dist>0 else pygame.Vector2()
-                cosang = v.x*u.x + v.y*u.y
-                effective_view = self.view_dist * (1.0 - 0.6*stealth_factor)
-                if cosang > self.cos_fov and dist < effective_view:
-                    if line_of_sight(grid, self.pos, player.pos):
-                        seen = True
+            if not player_on_hide:
+                to_player = (player.pos - self.pos)
+                dist = to_player.length()
+                if dist < self.view_dist:
+                    v = self.dir if self.dir.length_squared()>0 else pygame.Vector2(1,0)
+                    v = v.normalize()
+                    u = to_player.normalize() if dist>0 else pygame.Vector2()
+                    cosang = v.x*u.x + v.y*u.y
+                    effective_view = self.view_dist * (1.0 - 0.6*stealth_factor)
+                    if cosang > self.cos_fov and dist < effective_view:
+                        if line_of_sight(grid, self.pos, player.pos):
+                            seen = True
 
         if seen:
             self.state = "chase"
             self.search_timer = 2.0
+        else:
+            if player_on_hide and self.state == "chase":
+                self.state = "search"
+                self.search_timer = 1.5
+
+        moved = False
 
         if self.state == "chase":
             d = (player.pos - self.pos)
             if d.length():
                 self.dir = d.normalize()
                 step = self.dir * self.speed_chase * dt
-                self._move_with_collisions(step, grid)
+
+                # HIDE yakınında geri dön
+                if player_on_hide and d.length() < (self.radius + player.radius + 6):
+                    away = (self.pos - player.pos)
+                    if away.length():
+                        step = away.normalize() * self.speed_patrol * dt * 1.2
+                    self.state = "search"
+                    self.search_timer = 1.2
+
+                moved = self._move_smart(step, grid)
+
             self.search_timer -= dt
             if self.search_timer <= 0:
                 self.state = "search"
                 self.search_timer = 1.5
 
         elif self.state == "search":
-            self._patrol(dt, grid, scale=0.6)
+            moved = self._patrol(dt, grid, scale=0.7)
             self.search_timer -= dt
             if self.search_timer <= 0:
                 self.state = "patrol"
-        else:
-            self._patrol(dt, grid)
 
+        else:  # patrol
+            moved = self._patrol(dt, grid)
+
+        # HIDE üstünde çakışma varsa hafif it
+        if player_on_hide:
+            diff = self.pos - player.pos
+            if diff.length() < (self.radius + player.radius + 2):
+                push = diff.normalize() if diff.length() else pygame.Vector2(1,0)
+                self.pos += push * 40 * dt
+                moved = True
+
+        # --- Stuck algılama ---
+        if (self.pos - self._last_pos).length() < 2.0:
+            self._stuck_time += dt
+        else:
+            self._stuck_time = 0.0
+        self._last_pos.update(self.pos)
+
+        # Uzun süre hareket yoksa hedef ve yönü yenile
+        if self._stuck_time > 0.6:
+            self._stuck_time = 0.0
+            self.patrol_target = None
+            # rastgele bir yöne bak
+            ang = random.uniform(0, 2*math.pi)
+            self.dir = pygame.Vector2(math.cos(ang), math.sin(ang))
+
+    # ---------------- movement helpers ----------------
     def _patrol(self, dt, grid, scale=1.0):
-        if not self.patrol_target or (self.patrol_target - self.pos).length() < 8:
+        # Hedef yoksa veya çok yakında ise yeni hedef üret
+        if (not self.patrol_target) or (self.patrol_target - self.pos).length() < 10 or self._repath_cool > 0.0:
+            if self._repath_cool > 0.0:
+                self._repath_cool = max(0.0, self._repath_cool - dt)
             gx, gy = px_to_grid(self.pos.x, self.pos.y)
-            for _ in range(30):
+            for _ in range(40):
                 rx = max(2, min(len(grid[0])-3, gx + random.randint(-6,6)))
                 ry = max(2, min(len(grid)-3, gy + random.randint(-6,6)))
-                if grid[int(ry)][int(rx)] != 1:  # not WALL
+                if grid[int(ry)][int(rx)] != WALL and grid[int(ry)][int(rx)] != CRATE:
                     self.patrol_target = pygame.Vector2(rx*TILE+TILE//2, ry*TILE+TILE//2)
                     break
+
+        moved = False
         if self.patrol_target:
             d = self.patrol_target - self.pos
             if d.length():
-                step = d.normalize() * self.speed_patrol * dt * scale
-                self._move_with_collisions(step, grid)
+                self.dir = d.normalize()
+                step = self.dir * self.speed_patrol * dt * scale
+                moved = self._move_smart(step, grid)
+                # Hedefe gidiş engellendiyse kısa süre sonra yeni hedef seç
+                if not moved:
+                    self._repath_cool = 0.2
+        return moved
 
-    def _move_with_collisions(self, step, grid):
-        nx = self.pos.x + step.x; ny = self.pos.y + step.y
+    def _move_smart(self, step, grid):
+        """Eksen bazlı çarpışma + kayma + jitter. True dönerse anlamlı hareket var."""
+        start = self.pos.copy()
+
+        # 1) önce X sonra Y
+        nx = self.pos.x + step.x
+        ny = self.pos.y
+        nx = self._solve_axis_collision(nx, self.pos.y, step.x, 0, grid)
+        ny = self.pos.y + step.y
+        ny = self._solve_axis_collision(nx, ny, 0, step.y, grid)
+        self.pos.x, self.pos.y = nx, ny
+
+        moved = (self.pos - start).length() > 0.5
+        if moved:
+            return True
+
+        # 2) kayma denemesi (duvara paralel)
+        # step'i dik yönde deneriz
+        if abs(step.x) > abs(step.y):
+            # X tıkalıysa Y yönünde hafif kay
+            slip = pygame.Vector2(0, math.copysign(1, step.x)) * (abs(step.x) * 0.5)
+        else:
+            slip = pygame.Vector2(math.copysign(1, step.y), 0) * (abs(step.y) * 0.5)
+        nx2 = start.x + slip.x
+        ny2 = start.y
+        nx2 = self._solve_axis_collision(nx2, ny2, slip.x, 0, grid)
+        ny2 = start.y + slip.y
+        ny2 = self._solve_axis_collision(nx2, ny2, 0, slip.y, grid)
+        if (pygame.Vector2(nx2, ny2) - start).length() > 0.5:
+            self.pos.x, self.pos.y = nx2, ny2
+            return True
+
+        # 3) küçük jitter (rastgele çok küçük adım)
+        ang = random.uniform(0, 2*math.pi)
+        jitter = pygame.Vector2(math.cos(ang), math.sin(ang)) * 8
+        nx3 = start.x + jitter.x
+        ny3 = start.y
+        nx3 = self._solve_axis_collision(nx3, ny3, jitter.x, 0, grid)
+        ny3 = start.y + jitter.y
+        ny3 = self._solve_axis_collision(nx3, ny3, 0, jitter.y, grid)
+        if (pygame.Vector2(nx3, ny3) - start).length() > 0.5:
+            self.pos.x, self.pos.y = nx3, ny3
+            return True
+
+        return False
+
+    def _solve_axis_collision(self, newx, newy, dx, dy, grid):
+        """Tek eksen çarpışma çözümü: duvar/CRATE'te dur, HIDE/FLOOR geç."""
+        x, y = newx, newy
         for ox, oy in self._nearby_tiles():
             if 0<=oy<len(grid) and 0<=ox<len(grid[0]):
                 t = grid[oy][ox]
                 if t in (WALL, CRATE):
                     tile_rect = pygame.Rect(ox*TILE, oy*TILE, TILE, TILE)
-                    if tile_rect.collidepoint(nx, self.pos.y):
-                        if step.x>0: nx = tile_rect.left - 0.1
-                        elif step.x<0: nx = tile_rect.right + 0.1
-                    if tile_rect.collidepoint(self.pos.x, ny):
-                        if step.y>0: ny = tile_rect.top - 0.1
-                        elif step.y<0: ny = tile_rect.bottom + 0.1
-        self.pos.x = nx; self.pos.y = ny
+                    if tile_rect.collidepoint(x, self.pos.y):
+                        if dx>0: x = tile_rect.left - 0.1
+                        elif dx<0: x = tile_rect.right + 0.1
+                    if tile_rect.collidepoint(self.pos.x, y):
+                        if dy>0: y = tile_rect.top - 0.1
+                        elif dy<0: y = tile_rect.bottom + 0.1
+        return x if dy==0 else y
 
     def _nearby_tiles(self):
         gx, gy = px_to_grid(self.pos.x, self.pos.y)
