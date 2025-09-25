@@ -16,7 +16,7 @@ class Game:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         # Fog of War base surface
         self.darkness_base = pygame.Surface((SCREEN_W, SCREEN_H), flags=pygame.SRCALPHA)
-        self.darkness_base.fill((0,0,0,230))
+        self.darkness_base.fill((0,0,0,255))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 22)
         self.bigfont = pygame.font.SysFont("arial", 40, bold=True)
@@ -431,10 +431,10 @@ class Game:
 
         # Player
         self.player.draw(self.screen, self.cam, self.colors["player"])
+        self.draw_fog_of_war()
 
         # HUD
         total_tigers = self.tigers_rescued + self.tigers_remaining
-        self.draw_fog_of_war()
 
         hud = f"Tigers: {self.tigers_rescued}/{total_tigers}   Hunters: {len(self.hunters_out) + sum(len(lst) for lst in self.hunters_in)}   Time: {int(self.timer//60):02d}:{int(self.timer%60):02d}"
         txt = self.font.render(hud, True, self.colors["ui"])
@@ -455,6 +455,7 @@ class Game:
             self.screen.blit(t, (SCREEN_W//2 - t.get_width()//2, 160))
             msg = self.font.render("[Esc] Resume   [R] Restart   [M] Menu", True, self.colors["ui"])
             self.screen.blit(msg, (SCREEN_W//2 - msg.get_width()//2, 220))
+
 
     # game.py  — Game sınıfı içine ekle
     def draw_fog_of_war(self):

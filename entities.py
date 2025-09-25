@@ -3,7 +3,7 @@ from utils import clamp, px_to_grid, grid_to_px, line_of_sight
 from config import TILE, FLOOR, WALL, CRATE, BUSH, HIDE, TIGER_SPAWN, SPAWN
 
 # ---------------- Grid helpers ----------------
-PASSABLE = {FLOOR, BUSH, HIDE, TIGER_SPAWN, SPAWN}  # yürünebilir karo tipleri
+PASSABLE = {FLOOR, BUSH, HIDE, TIGER_SPAWN, SPAWN}
 
 def is_passable(grid, gx, gy):
     if gy < 0 or gy >= len(grid) or gx < 0 or gx >= len(grid[0]):
@@ -18,10 +18,9 @@ def neighbors4(grid, node):
             yield (nx,ny)
 
 def manhattan(a,b):
-    return abs(a[0]-b[0]) + abs(a[1]-b[1])
+    return abs(a[0]-b[0]) + abs(a[1]-a[1] + b[1]-b[1]) if False else abs(a[0]-b[0]) + abs(a[1]-b[1])
 
 def a_star(grid, start, goal, max_expand=2500):
-    """Basit ve hızlı A*; yol yoksa None döner."""
     if start == goal:
         return [start]
     openh=[]; heapq.heappush(openh, (manhattan(start,goal), 0, start, None))
@@ -42,7 +41,6 @@ def a_star(grid, start, goal, max_expand=2500):
                 heapq.heappush(openh,(f,ng,nb,node))
     if goal not in came:
         return None
-    # reconstruct
     path=[]; cur=goal
     while cur is not None:
         path.append(cur); cur=came[cur]
@@ -64,7 +62,7 @@ class Player:
         self.pos = pygame.Vector2(x,y)
         self.radius = 12
         self.speed = speed
-        self.hiding = False  # game.py H tuşu ile toggleyebilir
+        self.hiding = False
 
     def move(self, dt, grid):
         if self.hiding:
@@ -84,7 +82,6 @@ class Player:
         nx = self.pos.x + dx
         ny = self.pos.y + dy
         gx,gy = px_to_grid(nx, ny)
-        # duvar/CRATE'e çarpma kontrolü (yakındaki karolar)
         rng = range(-2,3)
         for oy in rng:
             for ox in rng:
@@ -107,36 +104,33 @@ class Player:
         p = cam.to_screen(self.pos)
         pygame.draw.circle(surf, color, (int(p.x), int(p.y)), self.radius)
 
-# ---------------- Hunter with A* Patrol & Chase ----------------
+# ---------------- Hunter (A* Patrol & Chase) ----------------
 class Hunter:
     def __init__(self, x, y, outdoor=True):
         self.pos = pygame.Vector2(x,y)
         self.radius = 12
         self.outdoor = outdoor
 
-        # hızlar
         self.speed_patrol = 120 if outdoor else 110
         self.speed_chase  = 200 if outdoor else 180
 
-        # görüş
         self.fov_deg   = 75 if outdoor else 60
         self.view_dist = 9*TILE if outdoor else 7*TILE
         self.cos_fov = math.cos(math.radians(self.fov_deg/2))
         self.vision_tick = 0.0
 
-        # durum
         self.state = "patrol"  # patrol/search/chase
         self.dir = pygame.Vector2(1,0)
         self.search_timer = 0.0
 
-        # PATROL için A* rota
-        self.patrol_goal = None      # grid (gx,gy)
-        self.patrol_path = None      # grid listesi
+        # PATROL A*
+        self.patrol_goal = None
+        self.patrol_path = None
         self.patrol_i = 0
         self.patrol_repath_cd = 0.0
         self.patrol_pick_cd = 0.0
 
-        # CHASE için A* rota
+        # CHASE A*
         self.path = None
         self.path_i = 0
         self.repath_cd = 0.0
@@ -145,13 +139,12 @@ class Hunter:
         self._last_pos = self.pos.copy()
         self._stuck_t = 0.0
 
-    # ---------- public update ----------
     def update(self, dt, grid, player, stealth_factor):
-        # HIDE üzerinde mi?
+        # --- player on HIDE? hard blind & chase drop ---
         pgx, pgy = px_to_grid(player.pos.x, player.pos.y)
         player_on_hide = (0 <= pgy < len(grid) and 0 <= pgx < len(grid[0]) and grid[pgy][pgx] == HIDE)
 
-        # Görüş (HIDE'da kapalı)
+        # vision (blocked if on HIDE)
         seen = False
         self.vision_tick -= dt
         if self.vision_tick <= 0:
@@ -168,48 +161,48 @@ class Hunter:
                         if dist < eff_view and line_of_sight(grid, self.pos, player.pos):
                             seen = True
 
-        # Durum değişimi (kovalamayı bırakma koşulları dahil)
+        # state transitions
         if seen:
             self.state = "chase"
-            self.repath_cd = 0.0  # hemen rota çıkarabilir
+            self.repath_cd = 0.0
             self.search_timer = 2.0
         else:
-            # HIDE'taysan anında bırak
             if player_on_hide and self.state == "chase":
+                # immediate drop + forget route
                 self.state = "search"
-                self.search_timer = 1.25
+                self.search_timer = 1.5
+                self.path = None
 
-        # Güncellemeler
+        # leave chase if far (>6 tiles) or player_on_hide
+        s = px_to_grid(self.pos.x, self.pos.y)
+        g = px_to_grid(player.pos.x, player.pos.y)
+        if self.state == "chase" and (player_on_hide or manhattan(s, g) > 6):
+            self.state = "search"
+            self.search_timer = 1.0
+            self.path = None
+
+        # update by state
         if self.state == "chase":
             self._update_chase(dt, grid, player, player_on_hide)
-            # 6 karo uzaklığa çıkarsa kovalamayı bırak
-            s = px_to_grid(self.pos.x, self.pos.y)
-            g = px_to_grid(player.pos.x, player.pos.y)
-            if manhattan(s, g) > 6:
-                self.state = "search"
-                self.search_timer = 1.0
-                self.path = None
         elif self.state == "search":
-            # patrol gibi dolan ama biraz yavaş, kısa süre sonra patrol
             self._update_patrol(dt, grid, speed_scale=0.9, range_cells=10)
             self.search_timer -= dt
             if self.search_timer <= 0:
                 self.state = "patrol"
         else:
-            # normal devriye — A* ile hedefe git
             self._update_patrol(dt, grid, speed_scale=1.0, range_cells=14)
 
-        # HIDE üstünde üst üste binmeyi hafif iterek engelle
+        # --- HIDE soft repel in all states ---
         if player_on_hide:
             diff = self.pos - player.pos
-            if diff.length() < (self.radius + player.radius + 2):
-                push = diff.normalize() if diff.length() else pygame.Vector2(1,0)
-                self.pos += push * 60 * dt
+            d = diff.length()
+            safe = self.radius + player.radius + 12
+            if d < safe:
+                push = (diff.normalize() if d>0 else pygame.Vector2(1,0)) * (60*dt)
+                self.pos += push
 
-        # sınır kelepçesi
+        # clamp & anti-stuck
         self._clamp_to_grid(grid)
-
-        # stuck algılama → rota & hedef yenile
         if (self.pos - self._last_pos).length() < 0.8:
             self._stuck_t += dt
         else:
@@ -224,22 +217,18 @@ class Hunter:
                 self.patrol_pick_cd = 0.0
                 self.patrol_repath_cd = 0.0
 
-    # ---------- PATROL: A* ile doğal dolaşma ----------
+    # ---------- PATROL ----------
     def _update_patrol(self, dt, grid, speed_scale=1.0, range_cells=12):
         self.patrol_repath_cd -= dt
         self.patrol_pick_cd   -= dt
-
         s = px_to_grid(self.pos.x, self.pos.y)
 
-        # Hedef yoksa/ulaşıldıysa yeni hedef seç
-        need_goal = (self.patrol_goal is None or self.patrol_path is None or self.patrol_i >= len(self.patrol_path))
-        if need_goal and self.patrol_pick_cd <= 0:
+        if (self.patrol_goal is None or self.patrol_path is None or self.patrol_i >= len(self.patrol_path)) and self.patrol_pick_cd <= 0:
             self.patrol_goal = self._pick_patrol_goal(grid, s, range_cells)
             self.patrol_path = None
             self.patrol_i = 0
-            self.patrol_pick_cd = 0.3  # çok sık hedef seçme
+            self.patrol_pick_cd = 0.3
 
-        # Rota yoksa ya da süresi dolduysa üret
         if self.patrol_goal and (self.patrol_path is None or self.patrol_repath_cd <= 0):
             p = a_star(grid, s, self.patrol_goal)
             if p and len(p) >= 2:
@@ -247,13 +236,11 @@ class Hunter:
                 self.patrol_i = 1
                 self.patrol_repath_cd = 0.6
             else:
-                # seçilen hedefe yol yoksa yeni hedef seç
                 self.patrol_goal = None
                 self.patrol_path = None
                 self.patrol_i = 0
                 return
 
-        # Rotayı takip et
         speed = self.speed_patrol * speed_scale * dt
         if self.patrol_path:
             tgt_g = self.patrol_path[self.patrol_i]
@@ -266,7 +253,6 @@ class Hunter:
                     tgt_c = grid_center(*tgt_g)
                     to_t = tgt_c - self.pos
                 else:
-                    # hedefe varıldı → yeni hedefe geç
                     self.patrol_goal = None
                     self.patrol_path = None
                     self.patrol_i = 0
@@ -276,7 +262,6 @@ class Hunter:
                 self._step_axis(speed, grid, self.dir)
 
     def _pick_patrol_goal(self, grid, s, R):
-        """s etrafında R yarıçapında rastgele yürünebilir bir hedef seç."""
         W = len(grid[0]); H = len(grid)
         sx, sy = s
         for _ in range(60):
@@ -284,24 +269,23 @@ class Hunter:
             gy = max(1, min(H-2, sy + random.randint(-R, R)))
             if is_passable(grid, gx, gy) and manhattan((sx,sy),(gx,gy)) >= 4:
                 return (gx,gy)
-        # fallback: en yakın açık komşu
         for nb in neighbors4(grid, s):
             return nb
         return s
 
-    # ---------- CHASE: A* + kaçırma koşulları ----------
+    # ---------- CHASE ----------
     def _update_chase(self, dt, grid, player, player_on_hide):
-        # çok yakında ve HIDE ise geri çekil
         d = player.pos - self.pos
-        if player_on_hide and d.length() < (self.radius + player.radius + 10):
-            self.dir = -vec_to_card(self.dir)
+        if player_on_hide:
+            # immediate back off and drop path (safety)
+            self.dir = -vec_to_card(d)
             self._step_axis(self.speed_patrol*dt, grid, self.dir)
+            self.path = None
             return
 
         s = px_to_grid(self.pos.x, self.pos.y)
         g = px_to_grid(player.pos.x, player.pos.y)
 
-        # path yenileme
         self.repath_cd -= dt
         if self.path is None or self.path_i >= len(self.path) or self.repath_cd <= 0:
             p = a_star(grid, s, g)
@@ -328,7 +312,6 @@ class Hunter:
                 self.dir = vec_to_card(to_t)
                 moved = self._step_axis(speed, grid, self.dir)
         if not moved:
-            # fallback küçük kardinal adım
             dx = 1 if d.x>0 else -1
             dy = 1 if d.y>0 else -1
             primary_h = abs(d.x) >= abs(d.y)
@@ -343,18 +326,13 @@ class Hunter:
 
     # ---------- Movement & Collisions ----------
     def _step_axis(self, step_len, grid, dirv):
-        """Eksen ayrık hareket; duvara çarpmadan önce frenler."""
         start = self.pos.copy()
         step = dirv * step_len
-
-        # X
         nx = self.pos.x + step.x
         ny = self.pos.y
         nx, ny = self._solve_axis(nx, ny, step.x, 0, grid)
-        # Y
         ny = ny + step.y
         nx, ny = self._solve_axis(nx, ny, 0, step.y, grid)
-
         self.pos.x, self.pos.y = nx, ny
         self._clamp_to_grid(grid)
         return (self.pos - start).length() > 0.1
@@ -368,7 +346,6 @@ class Hunter:
                 tx,ty = gx+ox, gy+oy
                 if 0<=ty<len(grid) and 0<=tx<len(grid[0]) and grid[ty][tx] in (WALL, CRATE):
                     r = pygame.Rect(tx*TILE, ty*TILE, TILE, TILE)
-                    # önden “frenleme” (duvara girmeden önce dur)
                     if r.collidepoint(x, self.pos.y):
                         if dx>0: x = min(x, r.left - 0.1)
                         elif dx<0: x = max(x, r.right + 0.1)
@@ -381,7 +358,6 @@ class Hunter:
         self.pos.x = clamp(self.pos.x, TILE, (len(grid[0])-1)*TILE)
         self.pos.y = clamp(self.pos.y, TILE, (len(grid)-1)*TILE)
 
-    # ---------- Draw ----------
     def draw(self, surf, cam, colors, show_fov=False):
         p = cam.to_screen(self.pos)
         pygame.draw.circle(surf, colors["hunter"], (int(p.x), int(p.y)), self.radius)
