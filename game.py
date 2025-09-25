@@ -14,6 +14,9 @@ class Game:
         pygame.init()
         pygame.display.set_caption("Tiger Rescue – The Footprint Maze")
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        # Fog of War base surface
+        self.darkness_base = pygame.Surface((SCREEN_W, SCREEN_H), flags=pygame.SRCALPHA)
+        self.darkness_base.fill((0,0,0,230))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 22)
         self.bigfont = pygame.font.SysFont("arial", 40, bold=True)
@@ -431,9 +434,13 @@ class Game:
 
         # HUD
         total_tigers = self.tigers_rescued + self.tigers_remaining
+        self.draw_fog_of_war()
+
         hud = f"Tigers: {self.tigers_rescued}/{total_tigers}   Hunters: {len(self.hunters_out) + sum(len(lst) for lst in self.hunters_in)}   Time: {int(self.timer//60):02d}:{int(self.timer%60):02d}"
         txt = self.font.render(hud, True, self.colors["ui"])
         self.screen.blit(txt, (16, 12))
+        pass
+
 
         # Hidden tag (indoor)
         if self.in_indoor and getattr(self.player, "hiding", False):
@@ -448,3 +455,38 @@ class Game:
             self.screen.blit(t, (SCREEN_W//2 - t.get_width()//2, 160))
             msg = self.font.render("[Esc] Resume   [R] Restart   [M] Menu", True, self.colors["ui"])
             self.screen.blit(msg, (SCREEN_W//2 - msg.get_width()//2, 220))
+
+    # game.py  — Game sınıfı içine ekle
+    def draw_fog_of_war(self):
+        import pygame
+        from config import SCREEN_W, SCREEN_H, TILE
+
+        # Lazily create darkness base once (tamamen siyah, %100 karanlık)
+        if not hasattr(self, "darkness_base"):
+            self.darkness_base = pygame.Surface((SCREEN_W, SCREEN_H), flags=pygame.SRCALPHA)
+            self.darkness_base.fill((0, 0, 0, 255))
+
+        darkness = self.darkness_base.copy()
+
+        # Oyuncunun ekran koordinatı (piksel)
+        px = int(self.player.pos.x - self.cam.offset.x + TILE // 2)
+        py = int(self.player.pos.y - self.cam.offset.y + TILE // 2)
+
+        # İstediğin halkalar (yarıçap karo cinsinden, karanlık oranı 0..1)
+        # 5 kareye kadar %0 (tam görünür), 6: %75, 7: %85, 8: %95,
+        # 8'den sonrası zaten base: %100 karanlık.
+        rings = [
+            (8, 0.95),
+            (7, 0.85),
+            (6, 0.75),
+            (5, 0.00),
+        ]
+
+        # Dıştan içe doğru çiz (daha içteki değerler üstüne yazar)
+        for radius_tiles, darkness_ratio in rings:
+            alpha = int(max(0.0, min(1.0, darkness_ratio)) * 255)
+            r_px = int(radius_tiles * TILE)
+            pygame.draw.circle(darkness, (0, 0, 0, alpha), (px, py), r_px)
+
+        # Katmanı en üste bas
+        self.screen.blit(darkness, (0, 0))

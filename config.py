@@ -4,6 +4,16 @@ import os
 SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 TILE = 32
+VISION_TILES = 10
+
+# Fog visibility rings: (radius in tiles, darkness 0..1)
+FOG_RINGS = [
+    (5, 0.00),  # fully visible
+    (6, 0.75),
+    (7, 0.85),
+    (8, 0.95),
+]
+  # visibility radius in tiles
 
 # Paths
 DATA_DIR = "data"
