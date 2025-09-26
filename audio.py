@@ -35,13 +35,19 @@ class Audio:
                         self.preloaded_music[key] = None
 
         self.sfx = {}
-        for key, fname in [("rescue", "sfx_rescue.wav"), ("caught", "sfx_caught.wav")]:
+        for key, fname in [
+            ("rescue", "rescue.ogg"),  # ← doğru dosya
+            ("bushes", "bushes.ogg"),  # ← saklanma efekti
+            ("caught", "sfx_caught.wav")
+        ]:
             path = os.path.join(AUDIO_DIR, fname)
             if self.ready and os.path.exists(path):
                 try:
                     self.sfx[key] = pygame.mixer.Sound(path)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"[SFX ERR] {key} -> {path}: {e}")
+            else:
+                print(f"[SFX MISS] {key} -> {path}")
 
     def play_music(self, key, fade_ms=400):
         if not self.ready or not self.enabled_music:

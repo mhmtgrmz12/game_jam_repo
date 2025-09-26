@@ -352,7 +352,11 @@ class Game:
                                 wmap = self.warehouses[self.indoor_idx]
                                 pg = px_to_grid(self.player.pos.x, self.player.pos.y)
                                 if wmap.grid[pg[1]][pg[0]] == HIDE:
-                                    self.player.hiding = not self.player.hiding
+                                    if wmap.grid[pg[1]][pg[0]] == HIDE:
+                                        was = self.player.hiding
+                                        self.player.hiding = not self.player.hiding
+                                        if self.player.hiding and not was:
+                                            self.audio.play_sfx("bushes")
                     elif self.state==State.PAUSE:
                         if e.key==pygame.K_ESCAPE:
                             self.state = State.PLAY
