@@ -72,27 +72,34 @@ class Player:
         self.anim_t = 0.0
         self.frame_i = 0
         self.facing_left = False
+        self._moving = False  # <— sadece bu kararı kullanacağız
+        self._sequence = "idle"
+
         self._last_pos = self.pos.copy()
 
     def move(self, dt, grid):
         if self.hiding:
-            # saklanırken de idle frame gösterelim
-            self._animate(dt, moving=False)
+            self._moving = False
+            self._animate(dt)
             return
+
         keys = pygame.key.get_pressed()
-        v = pygame.Vector2(0, 0)
-        if keys[pygame.K_w]: v.y -= 1
-        if keys[pygame.K_s]: v.y += 1
-        if keys[pygame.K_a]: v.x -= 1
-        if keys[pygame.K_d]: v.x += 1
-        if v.length_squared(): v = v.normalize() * self.speed * dt
-        if v.x != 0: self.facing_left = (v.x < 0)
+        d = pygame.Vector2(0, 0)
+        if keys[pygame.K_w]: d.y -= 1
+        if keys[pygame.K_s]: d.y += 1
+        if keys[pygame.K_a]: d.x -= 1
+        if keys[pygame.K_d]: d.x += 1
+
+        self._moving = d.length_squared() > 0
+        v = d.normalize() * self.speed * dt if self._moving else pygame.Vector2(0, 0)
+        if v.x != 0:
+            self.facing_left = (v.x < 0)
+
         self._move_axis(v.x, 0, grid)
         self._move_axis(0, v.y, grid)
         self._clamp_to_grid(grid)
 
-        moving = (self.pos - self._last_pos).length() > 0.1
-        self._animate(dt, moving)
+        self._animate(dt)
         self._last_pos.update(self.pos)
 
     def _move_axis(self, dx, dy, grid):
@@ -117,19 +124,22 @@ class Player:
         self.pos.x = clamp(self.pos.x, TILE, (len(grid[0])-1)*TILE)
         self.pos.y = clamp(self.pos.y, TILE, (len(grid)-1)*TILE)
 
-    def _animate(self, dt, moving: bool):
-        frames = self.frames_run if (moving and self.frames_run) else self.frames_idle
-        if frames:
-            fps = self.anim_fps_run if moving else self.anim_fps_idle
-            self.anim_t += dt * fps
-            self.frame_i = int(self.anim_t) % len(frames)
-        else:
+    def _animate(self, dt):
+        want = "run" if (self._moving and self.frames_run) else "idle"
+        if want != self._sequence:
+            self._sequence = want
             self.anim_t = 0.0
             self.frame_i = 0
 
+        frames = self.frames_run if self._sequence == "run" else self.frames_idle
+        if frames:
+            fps = self.anim_fps_run if self._sequence == "run" else self.anim_fps_idle
+            self.anim_t += dt * fps
+            self.frame_i = int(self.anim_t) % len(frames)
+
     def draw(self, surf, cam, color):
         p = cam.to_screen(self.pos)
-        frames = self.frames_run if self.anim_t > 0 and self.frames_run else self.frames_idle
+        frames = self.frames_run if (self._sequence == "run" and self.frames_run) else self.frames_idle
         if frames:
             img = frames[self.frame_i]
             if self.facing_left:
@@ -138,7 +148,6 @@ class Player:
             surf.blit(img, rect)
         else:
             pygame.draw.circle(surf, color, (int(p.x), int(p.y)), self.radius)
-
 # ---------------- Hunter (A* Patrol & Chase) ----------------
 class Hunter:
     def __init__(self, x, y, outdoor=True, frames=None):
