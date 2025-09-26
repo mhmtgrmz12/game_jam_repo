@@ -59,25 +59,41 @@ def vec_to_card(v):
 
 # ---------------- Player ----------------
 class Player:
-    def __init__(self, x, y, speed=210):
+    def __init__(self, x, y, speed=210, frames_run=None, frames_idle=None):
         self.pos = pygame.Vector2(x,y)
         self.radius = 12
         self.speed = speed
         self.hiding = False
+        # anim
+        self.frames_run = frames_run or []
+        self.frames_idle = frames_idle or []
+        self.anim_fps_run = 12
+        self.anim_fps_idle = 6
+        self.anim_t = 0.0
+        self.frame_i = 0
+        self.facing_left = False
+        self._last_pos = self.pos.copy()
 
     def move(self, dt, grid):
         if self.hiding:
+            # saklanırken de idle frame gösterelim
+            self._animate(dt, moving=False)
             return
         keys = pygame.key.get_pressed()
-        v = pygame.Vector2(0,0)
+        v = pygame.Vector2(0, 0)
         if keys[pygame.K_w]: v.y -= 1
         if keys[pygame.K_s]: v.y += 1
         if keys[pygame.K_a]: v.x -= 1
         if keys[pygame.K_d]: v.x += 1
         if v.length_squared(): v = v.normalize() * self.speed * dt
+        if v.x != 0: self.facing_left = (v.x < 0)
         self._move_axis(v.x, 0, grid)
         self._move_axis(0, v.y, grid)
         self._clamp_to_grid(grid)
+
+        moving = (self.pos - self._last_pos).length() > 0.1
+        self._animate(dt, moving)
+        self._last_pos.update(self.pos)
 
     def _move_axis(self, dx, dy, grid):
         nx = self.pos.x + dx
@@ -101,9 +117,27 @@ class Player:
         self.pos.x = clamp(self.pos.x, TILE, (len(grid[0])-1)*TILE)
         self.pos.y = clamp(self.pos.y, TILE, (len(grid)-1)*TILE)
 
+    def _animate(self, dt, moving: bool):
+        frames = self.frames_run if (moving and self.frames_run) else self.frames_idle
+        if frames:
+            fps = self.anim_fps_run if moving else self.anim_fps_idle
+            self.anim_t += dt * fps
+            self.frame_i = int(self.anim_t) % len(frames)
+        else:
+            self.anim_t = 0.0
+            self.frame_i = 0
+
     def draw(self, surf, cam, color):
         p = cam.to_screen(self.pos)
-        pygame.draw.circle(surf, color, (int(p.x), int(p.y)), self.radius)
+        frames = self.frames_run if self.anim_t > 0 and self.frames_run else self.frames_idle
+        if frames:
+            img = frames[self.frame_i]
+            if self.facing_left:
+                img = pygame.transform.flip(img, True, False)
+            rect = img.get_rect(center=(int(p.x), int(p.y)))
+            surf.blit(img, rect)
+        else:
+            pygame.draw.circle(surf, color, (int(p.x), int(p.y)), self.radius)
 
 # ---------------- Hunter (A* Patrol & Chase) ----------------
 class Hunter:
@@ -373,6 +407,7 @@ class Hunter:
     def _clamp_to_grid(self, grid):
         self.pos.x = clamp(self.pos.x, TILE, (len(grid[0])-1)*TILE)
         self.pos.y = clamp(self.pos.y, TILE, (len(grid)-1)*TILE)
+
 
     def draw(self, surf, cam, colors, show_fov=False):
         p = cam.to_screen(self.pos)

@@ -84,6 +84,31 @@ class Game:
         except Exception as e:
             print("[WARN] hunter_run yüklenemedi:", e)
 
+        # --- Player idle/run sprite strips ---
+        self.player_frames_run = []
+        self.player_frames_idle = []
+
+        def _load_strip(path, default_cols, scale=1.25):
+            try:
+                img = pygame.image.load(path).convert_alpha()
+            except Exception:
+                return []
+            h = img.get_height()
+            # çoğu strip kareleri kare olur: frame_w ~ h
+            cols = img.get_width() // h if img.get_width() % h == 0 else default_cols
+            cols = max(1, cols)
+            fw = img.get_width() // cols
+            tw, th = int(TILE * scale), int(TILE * scale)
+            frames = []
+            for i in range(cols):
+                sub = img.subsurface(pygame.Rect(i * fw, 0, fw, h))
+                frames.append(pygame.transform.smoothscale(sub, (tw, th)))
+            return frames
+
+        self.player_frames_run = _load_strip("assets/images/player_run.png", default_cols=7, scale=6.00)
+        self.player_frames_idle = _load_strip("assets/images/player_stay.png", default_cols=4, scale=6.00)
+        print(f"[player] run:{len(self.player_frames_run)} idle:{len(self.player_frames_idle)}")
+
         # --- Tiger sprite ---
         self.tiger_img = None
         try:
@@ -101,7 +126,11 @@ class Game:
         self.overworld = TileMap(80, 60, self.colors, kind="overworld", images={"tree": self.tree_img, "rock": self.rock_img})
         self.warehouses = [TileMap(41,31,self.colors,kind="warehouse") for _ in self.overworld.doors]
 
-        self.player = Player(*grid_to_px(self.overworld.w_tiles//2, self.overworld.h_tiles//2))
+        self.player = Player(
+            *grid_to_px(self.overworld.w_tiles // 2, self.overworld.h_tiles // 2),
+            frames_run=self.player_frames_run,
+            frames_idle=self.player_frames_idle
+        )
         self.cam = Camera(self.overworld.w_tiles*TILE, self.overworld.h_tiles*TILE)
 
         self.indoor_idx = None
