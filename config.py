@@ -1,7 +1,8 @@
 import os
 
 # Screen / timing
-SCREEN_W, SCREEN_H = 1280, 720
+SCREEN_W = 1920
+SCREEN_H = 1080
 FPS = 60
 TILE = 32
 VISION_TILES = 10

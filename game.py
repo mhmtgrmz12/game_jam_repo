@@ -2,21 +2,32 @@ import time, random, pygame
 from config import *
 from utils import load_json, save_json, grid_to_px, px_to_grid
 from audio import Audio
-from camera import Camera
+from camera import *
 from tilemap import TileMap
 from entities import Player, Hunter
 from footprints import Footprints
 from states import State
 from ui import draw_menu, draw_themes, draw_scores
 
+
 class Game:
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("Tiger Rescue – The Footprint Maze")
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-        # Fog of War base surface
-        self.darkness_base = pygame.Surface((SCREEN_W, SCREEN_H), flags=pygame.SRCALPHA)
-        self.darkness_base.fill((0,0,0,255))
+        # 1080p tam ekran
+        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
+
+        # Biraz yakınlaştır (ör. 1.30). İstersen 1.20–1.50 arası denersin
+        self.zoom = 1.30
+        self.view_w = int(SCREEN_W / self.zoom)
+        self.view_h = int(SCREEN_H / self.zoom)
+
+        # Oyun sahnesini çizeceğimiz küçük yüzey
+        self.view = pygame.Surface((self.view_w, self.view_h), pygame.SRCALPHA)
+
+        # Fog, view boyutunda olmalı
+        self.darkness_base = pygame.Surface((self.view_w, self.view_h), pygame.SRCALPHA)
+        self.darkness_base.fill((0, 0, 0, 255))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 22)
         self.bigfont = pygame.font.SysFont("arial", 40, bold=True)
@@ -131,8 +142,8 @@ class Game:
             frames_run=self.player_frames_run,
             frames_idle=self.player_frames_idle
         )
-        self.cam = Camera(self.overworld.w_tiles*TILE, self.overworld.h_tiles*TILE)
-
+        self.cam = Camera(self.overworld.w_tiles * TILE, self.overworld.h_tiles * TILE,
+                         self.view_w, self.view_h)
         self.indoor_idx = None
         self.indoor_entry_grid = None
 
@@ -200,7 +211,7 @@ class Game:
                     else: continue
                     break
                 self.player.pos = pygame.Vector2(*grid_to_px(*entry))
-                self.cam = Camera(wmap.w_tiles*TILE, wmap.h_tiles*TILE)
+                self.cam = Camera(wmap.w_tiles * TILE, wmap.h_tiles * TILE, self.view_w, self.view_h)
                 if len(self.hunters_in[i])==0:
                     for _ in range(2):
                         if wmap.spawn_points:
@@ -230,7 +241,8 @@ class Game:
             self.in_indoor = False
             door = self.indoor_entry_grid
             self.player.pos = pygame.Vector2(*grid_to_px(*door))
-            self.cam = Camera(self.overworld.w_tiles*TILE, self.overworld.h_tiles*TILE)
+            self.cam = Camera(self.overworld.w_tiles * TILE, self.overworld.h_tiles * TILE,
+                              self.view_w, self.view_h)
             self.update_outdoor_footprints()
             self.indoor_idx=None
             # start cooldown after exiting
@@ -475,63 +487,68 @@ class Game:
                 self.fp_timer = self.fp_interval_in
 
     def draw_play(self, show_pause=False):
-        self.screen.fill(self.colors["bg"])
+        # --- 1) SAHNE → self.view ---
+        self.view.fill(self.colors["bg"])
+
+        # Dünya
         if not self.in_indoor:
-            self.overworld.draw(self.screen, self.cam, self.colors)
+            self.overworld.draw(self.view, self.cam, self.colors)
         else:
-            self.warehouses[self.indoor_idx].draw(self.screen, self.cam, self.colors)
+            self.warehouses[self.indoor_idx].draw(self.view, self.cam, self.colors)
 
-        # Footprints
-        self.footprints.draw(self.screen, self.cam)
+        # Ayak izleri
+        self.footprints.draw(self.view, self.cam)
 
-        # Tigers indoors
-        # Tigers indoors
+        # Kaplanlar (indoor)
         if self.in_indoor:
             wmap = self.warehouses[self.indoor_idx]
             for gx, gy in wmap.tiger_positions:
-                cx, cy = grid_to_px(gx, gy)  # grid -> pixel (merkez)
+                cx, cy = grid_to_px(gx, gy)
                 p = self.cam.to_screen(pygame.Vector2(cx, cy))
-                if self.tiger_img:
+                if getattr(self, "tiger_img", None):
                     rect = self.tiger_img.get_rect(center=(int(p.x), int(p.y)))
-                    self.screen.blit(self.tiger_img, rect.topleft)
+                    self.view.blit(self.tiger_img, rect.topleft)
                 else:
-                    # fallback: eski daire
-                    pygame.draw.circle(self.screen, self.colors["tiger"], (int(p.x), int(p.y)), TILE // 2)
+                    pygame.draw.circle(self.view, self.colors["tiger"], (int(p.x), int(p.y)), TILE // 2)
 
-        # Hunters
+        # Avcılar
         if not self.in_indoor:
             for h in self.hunters_out:
-                h.draw(self.screen, self.cam, self.colors, show_fov=False)
+                h.draw(self.view, self.cam, self.colors, show_fov=False)
         else:
             for h in self.hunters_in[self.indoor_idx]:
-                h.draw(self.screen, self.cam, self.colors, show_fov=False)
+                h.draw(self.view, self.cam, self.colors, show_fov=False)
 
-        # Player
-        self.player.draw(self.screen, self.cam, self.colors["player"])
+        # Oyuncu
+        self.player.draw(self.view, self.cam, self.colors["player"])
+
+        # Fog (self.view üzerine)
         self.draw_fog_of_war()
 
-        # HUD
-        total_tigers = self.tigers_rescued + self.tigers_remaining
+        # --- 2) self.view → self.screen (1080p fullscreen'e ölçekle) ---
+        scaled = pygame.transform.smoothscale(self.view, (SCREEN_W, SCREEN_H))
+        self.screen.blit(scaled, (0, 0))
 
-        hud = f"Tigers: {self.tigers_rescued}/{total_tigers}   Hunters: {len(self.hunters_out) + sum(len(lst) for lst in self.hunters_in)}   Time: {int(self.timer//60):02d}:{int(self.timer%60):02d}"
+        # --- 3) HUD / UI (ekrana net çizim) ---
+        total_tigers = self.tigers_rescued + self.tigers_remaining
+        hud = f"Tigers: {self.tigers_rescued}/{total_tigers}   Hunters: {len(self.hunters_out) + sum(len(lst) for lst in self.hunters_in)}   Time: {int(self.timer // 60):02d}:{int(self.timer % 60):02d}"
         txt = self.font.render(hud, True, self.colors["ui"])
         self.screen.blit(txt, (16, 12))
-        pass
 
-
-        # Hidden tag (indoor)
+        # Hidden etiketi (indoor + hiding)
         if self.in_indoor and getattr(self.player, "hiding", False):
             tag = self.font.render("(Hidden)", True, self.colors["hide"])
             self.screen.blit(tag, (16, 36))
 
+        # Pause overlay
         if show_pause:
             overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            overlay.fill((0,0,0,130))
-            self.screen.blit(overlay, (0,0))
+            overlay.fill((0, 0, 0, 130))
+            self.screen.blit(overlay, (0, 0))
             t = self.bigfont.render("PAUSED", True, self.colors["ui"])
-            self.screen.blit(t, (SCREEN_W//2 - t.get_width()//2, 160))
+            self.screen.blit(t, (SCREEN_W // 2 - t.get_width() // 2, 160))
             msg = self.font.render("[Esc] Resume   [R] Restart   [M] Menu", True, self.colors["ui"])
-            self.screen.blit(msg, (SCREEN_W//2 - msg.get_width()//2, 220))
+            self.screen.blit(msg, (SCREEN_W // 2 - msg.get_width() // 2, 220))
 
     def _player_is_protected(self) -> bool:
         """Indoor HIDE karesi üzerinde ve hiding aktifse yakalanmasın."""
@@ -577,4 +594,4 @@ class Game:
             pygame.draw.circle(darkness, (0, 0, 0, alpha), (px, py), r_px)
 
         # Katmanı en üste bas
-        self.screen.blit(darkness, (0, 0))
+        self.view.blit(darkness, (0, 0))

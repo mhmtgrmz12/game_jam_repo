@@ -7,6 +7,13 @@
     "difficulty": "Default"
   },
   {
+    "timestamp": 1758878036,
+    "time_left": 370,
+    "rescued": 2,
+    "caughts": 0,
+    "difficulty": "Default"
+  },
+  {
     "timestamp": 1758819598,
     "time_left": 0,
     "rescued": 0,
@@ -57,13 +64,6 @@
   },
   {
     "timestamp": 1758822400,
-    "time_left": 0,
-    "rescued": 0,
-    "caughts": 1,
-    "difficulty": "Default"
-  },
-  {
-    "timestamp": 1758823262,
     "time_left": 0,
     "rescued": 0,
     "caughts": 1,
