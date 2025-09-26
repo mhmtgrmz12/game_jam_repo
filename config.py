@@ -5,9 +5,9 @@ SCREEN_W, SCREEN_H = 1280, 720
 FPS = 60
 TILE = 32
 VISION_TILES = 10
-HUNTER_SCALE = 1.25
-TREE_SCALE   = 1.20
-ROCK_SCALE   = 1.20
+HUNTER_SCALE = 1.75
+TREE_SCALE   = 1.50
+ROCK_SCALE   = 1.50
 
 # Fog visibility rings: (radius in tiles, darkness 0..1)
 FOG_RINGS = [

@@ -1,5 +1,12 @@
 [
   {
+    "timestamp": 1758870444,
+    "time_left": 521,
+    "rescued": 3,
+    "caughts": 0,
+    "difficulty": "Default"
+  },
+  {
     "timestamp": 1758819598,
     "time_left": 0,
     "rescued": 0,
@@ -57,13 +64,6 @@
   },
   {
     "timestamp": 1758823262,
-    "time_left": 0,
-    "rescued": 0,
-    "caughts": 1,
-    "difficulty": "Default"
-  },
-  {
-    "timestamp": 1758823447,
     "time_left": 0,
     "rescued": 0,
     "caughts": 1,

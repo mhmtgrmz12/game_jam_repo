@@ -84,6 +84,15 @@ class Game:
         except Exception as e:
             print("[WARN] hunter_run yüklenemedi:", e)
 
+        # --- Tiger sprite ---
+        self.tiger_img = None
+        try:
+            img = pygame.image.load("assets/images/tiger.png").convert_alpha()
+            size = int(TILE * 1.35)  # istersen 1.2–1.6 arası oynat
+            self.tiger_img = pygame.transform.smoothscale(img, (size, size))
+        except Exception as e:
+            print("[WARN] tiger.png yüklenemedi:", e)
+
         self.audio.play_music("menu")
         self.reset_world()
 
@@ -220,7 +229,7 @@ class Game:
             if self.overworld.spawn_points:
                 gx,gy = random.choice(self.overworld.spawn_points)
                 x,y = grid_to_px(gx,gy)
-                self.hunters_out.append(Hunter(x,y,outdoor=True))
+                self.hunters_out.append(Hunter(x, y, outdoor=True, frames=self.hunter_frames))
         # Indoor current
         if self.indoor_idx is not None:
             cur_list = self.hunters_in[self.indoor_idx]
@@ -231,8 +240,7 @@ class Game:
                 if wmap.spawn_points:
                     gx,gy = random.choice(wmap.spawn_points)
                     x,y = grid_to_px(gx,gy)
-                    cur_list.append(Hunter(x,y,outdoor=False))
-
+                    cur_list.append(Hunter(x, y, outdoor=False, frames=self.hunter_frames))
     # ---------------- Music debounce ----------------
     def update_music(self):
         if self.state != State.PLAY:
@@ -381,7 +389,8 @@ class Game:
             for h in self.hunters_out:
                 h.update(dt, self.overworld.grid, self.player, stealth_factor)
                 if h.state=="chase": self.any_chase=True
-                if (self.player.pos - h.pos).length() < (self.player.radius + h.radius):
+                if not self._player_is_protected() and (self.player.pos - h.pos).length() < (
+                        self.player.radius + h.radius):
                     self.audio.play_sfx("caught")
                     self.add_score(0, self.tigers_rescued, 1)
                     self.state = State.SCORES
@@ -409,7 +418,8 @@ class Game:
             for h in self.hunters_in[self.indoor_idx]:
                 h.update(dt, wmap.grid, self.player, stealth_factor)
                 if h.state=="chase": self.any_chase=True
-                if (self.player.pos - h.pos).length() < (self.player.radius + h.radius):
+                if not self._player_is_protected() and (self.player.pos - h.pos).length() < (
+                        self.player.radius + h.radius):
                     self.audio.play_sfx("caught")
                     self.add_score(0, self.tigers_rescued, 1)
                     self.state = State.SCORES
@@ -446,12 +456,18 @@ class Game:
         self.footprints.draw(self.screen, self.cam)
 
         # Tigers indoors
+        # Tigers indoors
         if self.in_indoor:
             wmap = self.warehouses[self.indoor_idx]
-            for gx,gy in wmap.tiger_positions:
-                cx, cy = grid_to_px(gx,gy)
-                p = self.cam.to_screen(pygame.Vector2(cx,cy))
-                pygame.draw.circle(self.screen, self.colors["tiger"], (int(p.x), int(p.y)), 10)
+            for gx, gy in wmap.tiger_positions:
+                cx, cy = grid_to_px(gx, gy)  # grid -> pixel (merkez)
+                p = self.cam.to_screen(pygame.Vector2(cx, cy))
+                if self.tiger_img:
+                    rect = self.tiger_img.get_rect(center=(int(p.x), int(p.y)))
+                    self.screen.blit(self.tiger_img, rect.topleft)
+                else:
+                    # fallback: eski daire
+                    pygame.draw.circle(self.screen, self.colors["tiger"], (int(p.x), int(p.y)), TILE // 2)
 
         # Hunters
         if not self.in_indoor:
@@ -488,6 +504,16 @@ class Game:
             msg = self.font.render("[Esc] Resume   [R] Restart   [M] Menu", True, self.colors["ui"])
             self.screen.blit(msg, (SCREEN_W//2 - msg.get_width()//2, 220))
 
+    def _player_is_protected(self) -> bool:
+        """Indoor HIDE karesi üzerinde ve hiding aktifse yakalanmasın."""
+        if not self.in_indoor or self.indoor_idx is None:
+            return False
+        wmap = self.warehouses[self.indoor_idx]
+        gx, gy = px_to_grid(self.player.pos.x, self.player.pos.y)
+        if not (0 <= gy < wmap.h_tiles and 0 <= gx < wmap.w_tiles):
+            return False
+        on_hide = (wmap.grid[gy][gx] == HIDE)
+        return on_hide and getattr(self.player, "hiding", False)
 
     # game.py  — Game sınıfı içine ekle
     def draw_fog_of_war(self):
