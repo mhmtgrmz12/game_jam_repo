@@ -252,4 +252,3 @@ class TileMap:
                         surf.blit(img, rect.topleft)
                     else:
                         pygame.draw.rect(surf, self.theme.get("rock", (50, 80, 60)), rr)
-
