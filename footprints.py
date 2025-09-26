@@ -16,6 +16,7 @@ class Footprints:
         self.color = color
         self.step_tiles = 7
         self.points: list[tuple[int, int]] = []  # grid noktaları (gx, gy)
+        self.target_position: tuple[int, int] | None = None  # Store the target entrance position
         self._rot_cache: dict[int, pygame.Surface] = {}
         self._paw_base: pygame.Surface | None = None
         self._load_or_build_paw()
@@ -29,8 +30,11 @@ class Footprints:
         """
         if not goal_g or not start_g:
             self.points = []
+            self.target_position = None
             return
 
+        # Store the target position for direction calculations
+        self.target_position = goal_g
         sx, sy = start_g
         gx, gy = goal_g
         h = len(grid)
@@ -60,6 +64,7 @@ class Footprints:
 
         if not found:
             self.points = []
+            self.target_position = None
             return
 
         # Yol rekonstrüksiyonu
@@ -75,38 +80,104 @@ class Footprints:
 
         self.points = path
 
-    def draw(self, surf: pygame.Surface, cam):
-        """İzleri her 7 karede bir (self.step_tiles) çizer."""
-        if not self.points or self._paw_base is None:
+    def draw(self, surf: pygame.Surface, cam, player_pos=None):
+        """Draw paw prints positioned 3 units away from player toward the entrance."""
+        if self._paw_base is None or self.target_position is None:
+            return
+
+        # If no player position provided, fall back to old path-based system
+        if player_pos is None:
+            self._draw_path_based(surf, cam)
             return
 
         paw = self._paw_base
         alpha = 190
+        
+        # Convert player position to grid coordinates
+        from utils import px_to_grid
+        player_gx, player_gy = px_to_grid(player_pos.x, player_pos.y)
+        target_x, target_y = self.target_position
+
+        # Calculate direction from player to entrance
+        dx = target_x - player_gx
+        dy = target_y - player_gy
+        
+        if dx == 0 and dy == 0:
+            return  # No direction to show
+            
+        # Normalize the direction vector
+        distance_to_target = math.sqrt(dx * dx + dy * dy)
+        if distance_to_target == 0:
+            return
+            
+        # Don't show paws if we're too close to the target (within 5 units)
+        if distance_to_target <= 5.0:
+            return
+            
+        dir_x = dx / distance_to_target
+        dir_y = dy / distance_to_target
+        
+        # Calculate angle for paw rotation (paw points UP by default)
+        angle_deg = math.degrees(math.atan2(dy, dx)) + 90
+
+        # Create natural paw prints with alternating left/right pattern
+        # Only place paws that don't exceed the distance to target (leave 3 units buffer)
+        max_distance = min(23.0, distance_to_target - 3.0)
+        distances = [d for d in [3.0, 7.0, 11.0, 15.0, 19.0, 23.0] if d <= max_distance]
+        
+        if not distances:  # No paws to place
+            return
+        
+        # Calculate perpendicular direction for left/right offset
+        perp_x = -dir_y  # Perpendicular to direction vector
+        perp_y = dir_x
+        
+        for i, dist in enumerate(distances):
+            # Calculate base paw position along the main direction
+            base_gx = player_gx + dir_x * dist
+            base_gy = player_gy + dir_y * dist
+            
+            # Alternate between left and right paws
+            is_left = (i % 2 == 0)
+            side_offset = 0.3 if is_left else -0.3  # Small offset to left or right
+            
+            # Add slight forward/backward variation for more natural gait
+            forward_variation = 0.1 if is_left else -0.1
+            
+            # Apply offsets for natural paw placement
+            paw_gx = base_gx + perp_x * side_offset + dir_x * forward_variation
+            paw_gy = base_gy + perp_y * side_offset + dir_y * forward_variation
+            
+            # Convert to screen coordinates
+            px = paw_gx * TILE + TILE // 2 - int(cam.offset.x)
+            py = paw_gy * TILE + TILE // 2 - int(cam.offset.y)
+            
+            # Check if paw is visible on screen
+            if -50 < px < surf.get_width() + 50 and -50 < py < surf.get_height() + 50:
+                img = self._get_rotated_cached(paw, angle_deg)
+                img.set_alpha(alpha)
+                rect = img.get_rect(center=(int(px), int(py)))
+                surf.blit(img, rect)
+
+    def _draw_path_based(self, surf: pygame.Surface, cam):
+        """Fallback: old path-based drawing system."""
+        if not self.points:
+            return
+            
+        paw = self._paw_base
+        alpha = 190
         step = getattr(self, "step_tiles", 7)
         n = len(self.points)
+        target_x, target_y = self.target_position
 
         for i in range(0, n, step):
             gx, gy = self.points[i]
-
-            # ekran merkezi
             px = gx * TILE + TILE // 2 - int(cam.offset.x)
             py = gy * TILE + TILE // 2 - int(cam.offset.y)
 
-            # yön: bir SONRAKİ hedefe bak (mümkünse i+step), yoksa yakın komşu
-            if i + step < n:
-                nx, ny = self.points[i + step]
-            elif i + 1 < n:
-                nx, ny = self.points[i + 1]
-            elif i - 1 >= 0:
-                nx, ny = self.points[i - 1]
-            else:
-                nx, ny = gx, gy
-
-            dx, dy = (nx - gx), (ny - gy)
-            if dx == 0 and dy == 0:
-                angle_deg = 0
-            else:
-                angle_deg = math.degrees(math.atan2(-dy, dx))  # sağa 0°
+            dx = target_x - gx
+            dy = target_y - gy
+            angle_deg = math.degrees(math.atan2(dy, dx)) + 90 if (dx != 0 or dy != 0) else 0
 
             img = self._get_rotated_cached(paw, angle_deg)
             img.set_alpha(alpha)
