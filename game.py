@@ -95,6 +95,15 @@ class Game:
         except Exception as e:
             print("[WARN] hunter_run yüklenemedi:", e)
 
+        # --- Menu background ---
+        self.menu_bg = None
+        try:
+            img = pygame.image.load("assets/images/menu.png").convert()
+            # Ekrana tam oturt (1920x1080)
+            self.menu_bg = pygame.transform.smoothscale(img, (SCREEN_W, SCREEN_H))
+        except Exception as e:
+            print("[WARN] menu.png yüklenemedi:", e)
+
         # --- Player idle/run sprite strips ---
         self.player_frames_run = []
         self.player_frames_idle = []
@@ -367,7 +376,13 @@ class Game:
                             self.audio.play_music("menu")
 
             if self.state==State.MENU:
-                draw_menu(self.screen, self.bigfont, self.font, self.colors, self.menu_items, self.menu_idx)
+                if self.state == State.MENU:
+                    if self.menu_bg:
+                        self.screen.blit(self.menu_bg, (0, 0))
+                    else:
+                        self.screen.fill(self.colors["bg"])
+                    draw_menu(self.screen, self.bigfont, self.font, self.colors, self.menu_items, self.menu_idx,
+                              clear_bg=False)
             elif self.state==State.THEMES:
                 draw_themes(self.screen, self.bigfont, self.font, self.colors, self.theme_names[self.theme_idx])
             elif self.state==State.SCORES:

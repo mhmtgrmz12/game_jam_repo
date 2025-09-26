@@ -1,17 +1,26 @@
 import pygame
 from config import SCREEN_W, SCREEN_H
 
-def draw_menu(screen, bigfont, font, colors, items, idx):
-    screen.fill(colors["bg"])
-    title = bigfont.render("Tiger Rescue – The Footprint Maze", True, colors["ui"])
-    screen.blit(title, (SCREEN_W//2 - title.get_width()//2, 120))
-    for i, item in enumerate(items):
-        col = colors["ui"] if i!=idx else colors["tiger"]
-        txt = font.render(("> " if i==idx else "  ")+item, True, col)
-        screen.blit(txt, (SCREEN_W//2 - 80, 240 + i*40))
-    tip = font.render("Use ↑/↓ and Enter. Esc exits.", True, colors["ui"])
-    screen.blit(tip, (SCREEN_W//2 - tip.get_width()//2, 520))
+def draw_menu(surf, bigfont, font, colors, items, idx, clear_bg=True):
+    import pygame
+    if clear_bg:
+        surf.fill(colors["bg"])  # arka planı sadece istenirse temizle
 
+    # (opsiyonel) okunabilirlik için hafif koyu overlay
+    overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 80))  # %31 opak koyu
+    surf.blit(overlay, (0, 0))
+
+    # başlık + menü maddeleri
+    title = bigfont.render("Tiger Rescue – The Footprint Maze", True, colors["ui"])
+    surf.blit(title, (surf.get_width()//2 - title.get_width()//2, 120))
+
+    y = 220
+    for i, it in enumerate(items):
+        sel = (i == idx)
+        txt = font.render(("▶ " if sel else "   ") + it, True, colors["ui"])
+        surf.blit(txt, (surf.get_width()//2 - 120, y))
+        y += 36
 def draw_themes(screen, bigfont, font, colors, theme_name):
     screen.fill(colors["bg"])
     t = bigfont.render("Themes", True, colors["ui"])
