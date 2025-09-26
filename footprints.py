@@ -122,8 +122,8 @@ class Footprints:
 
         # Create natural paw prints with alternating left/right pattern
         # Only place paws that don't exceed the distance to target (leave 3 units buffer)
-        max_distance = min(10.5, distance_to_target - 3.0)
-        distances = [d for d in [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5] if d <= max_distance]
+        max_distance = min(23.0, distance_to_target - 3.0)
+        distances = [d for d in [3.0, 7.0, 11.0, 15.0, 19.0, 23.0] if d <= max_distance]
         
         if not distances:  # No paws to place
             return
