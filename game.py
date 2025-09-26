@@ -453,7 +453,7 @@ class Game:
             self.warehouses[self.indoor_idx].draw(self.screen, self.cam, self.colors)
 
         # Footprints
-        self.footprints.draw(self.screen, self.cam)
+        self.footprints.draw(self.screen, self.cam, self.player.pos)
 
         # Tigers indoors
         # Tigers indoors
@@ -487,8 +487,6 @@ class Game:
         hud = f"Tigers: {self.tigers_rescued}/{total_tigers}   Hunters: {len(self.hunters_out) + sum(len(lst) for lst in self.hunters_in)}   Time: {int(self.timer//60):02d}:{int(self.timer%60):02d}"
         txt = self.font.render(hud, True, self.colors["ui"])
         self.screen.blit(txt, (16, 12))
-        pass
-
 
         # Hidden tag (indoor)
         if self.in_indoor and getattr(self.player, "hiding", False):
