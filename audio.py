@@ -36,19 +36,26 @@ class Audio:
 
         self.sfx = {}
         for key, fname in [
-            ("rescue", "rescue.ogg"),  # ← doğru dosya
-            ("bushes", "bushes.ogg"),  # ← saklanma efekti
+            ("rescue", "rescue.ogg"),
+            ("bushes", "bushes.ogg"),  # << saklanma sesi
             ("caught", "sfx_caught.wav")
         ]:
             path = os.path.join(AUDIO_DIR, fname)
             if self.ready and os.path.exists(path):
                 try:
-                    self.sfx[key] = pygame.mixer.Sound(path)
+                    s = pygame.mixer.Sound(path)
+                    # Per-SFX ses seviyesi:
+                    if key == "bushes":
+                        s.set_volume(1.0)  # << maksimum
+                    elif key == "rescue":
+                        s.set_volume(0.9)
+                    else:
+                        s.set_volume(0.9)
+                    self.sfx[key] = s
                 except Exception as e:
                     print(f"[SFX ERR] {key} -> {path}: {e}")
             else:
                 print(f"[SFX MISS] {key} -> {path}")
-
     def play_music(self, key, fade_ms=400):
         if not self.ready or not self.enabled_music:
             return
