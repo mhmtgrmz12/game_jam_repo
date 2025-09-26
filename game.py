@@ -468,6 +468,18 @@ class Game:
                 else:
                     # fallback: eski daire
                     pygame.draw.circle(self.screen, self.colors["tiger"], (int(p.x), int(p.y)), TILE // 2)
+                
+                # Show E prompt if player is within 2 units of tiger
+                player_gx, player_gy = px_to_grid(self.player.pos.x, self.player.pos.y)
+                distance = abs(player_gx - gx) + abs(player_gy - gy)  # Manhattan distance
+                if distance <= 2:
+                    e_text = self.font.render("E", True, (255, 255, 255))  # White text
+                    # Position E above the tiger
+                    e_rect = e_text.get_rect(center=(int(p.x), int(p.y - TILE)))
+                    # Draw semi-transparent background
+                    bg_rect = pygame.Rect(e_rect.x - 4, e_rect.y - 2, e_rect.width + 8, e_rect.height + 4)
+                    pygame.draw.rect(self.screen, (0, 0, 0, 180), bg_rect)
+                    self.screen.blit(e_text, e_rect)
 
         # Hunters
         if not self.in_indoor:
@@ -479,6 +491,39 @@ class Game:
 
         # Player
         self.player.draw(self.screen, self.cam, self.colors["player"])
+        
+        # Show E prompt for hiding spots (HIDE and BUSH tiles) when player is within 2 units
+        player_gx, player_gy = px_to_grid(self.player.pos.x, self.player.pos.y)
+        
+        # Check tiles in a 5x5 area around player (within 2 units Manhattan distance)
+        current_map = self.overworld if not self.in_indoor else self.warehouses[self.indoor_idx]
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                check_x = player_gx + dx
+                check_y = player_gy + dy
+                
+                # Check if within bounds and within 2 units Manhattan distance
+                if (0 <= check_x < current_map.w_tiles and 
+                    0 <= check_y < current_map.h_tiles and 
+                    abs(dx) + abs(dy) <= 2):
+                    
+                    tile_id = current_map.grid[check_y][check_x]
+                    
+                    # Show Space for hiding spots (HIDE and BUSH)
+                    if tile_id == HIDE or tile_id == BUSH:
+                        cx, cy = grid_to_px(check_x, check_y)  # tile center in world coords
+                        p = self.cam.to_screen(pygame.Vector2(cx, cy))
+                        
+                        # Check if on screen
+                        if -50 < p.x < SCREEN_W + 50 and -50 < p.y < SCREEN_H + 50:
+                            space_text = self.font.render("Space", True, (255, 255, 255))  # White text
+                            # Position Space above the hiding spot
+                            space_rect = space_text.get_rect(center=(int(p.x), int(p.y - TILE//2)))
+                            # Draw semi-transparent background
+                            bg_rect = pygame.Rect(space_rect.x - 4, space_rect.y - 2, space_rect.width + 8, space_rect.height + 4)
+                            pygame.draw.rect(self.screen, (0, 0, 0, 180), bg_rect)
+                            self.screen.blit(space_text, space_rect)
+        
         self.draw_fog_of_war()
 
         # HUD
