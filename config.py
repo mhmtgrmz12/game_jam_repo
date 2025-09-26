@@ -16,7 +16,7 @@ FOG_RINGS = [
     (7, 0.85),
     (8, 0.95),
 ]
-  # visibility radius in tiles
+# visibility radius in tiles
 
 # Paths
 DATA_DIR = "data"
